@@ -1,96 +1,155 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+import matplotlib.pyplot as plt
+
+# ─── Page Config ─────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="AQI Predictor Pro",
+    page_icon="🌫️",
+    layout="wide"
+)
+
+# ─── Custom CSS ───────────────────────────────────────────────────────
+st.markdown("""
+    <style>
+        .stButton>button {
+            background-color: #4CAF50;
+            color: white;
+            font-size: 18px;
+            border-radius: 10px;
+            padding: 10px;
+            width: 100%;
+        }
+        h1 { color: #4CAF50; }
+    </style>
+""", unsafe_allow_html=True)
 
 # ─── Load & Train Model ───────────────────────────────────────────────
 @st.cache_resource
-def train_model():
+def load_data_and_train():
     df = pd.read_csv('city_day.csv')
 
-    # Clean data
-    cols_to_fill = ['PM2.5', 'PM10', 'NO', 'NO2', 'NOx', 'NH3', 'CO', 'SO2', 'O3']
-    for col in cols_to_fill:
+    cols = ['PM2.5','PM10','NO','NO2','NOx','NH3','CO','SO2','O3']
+
+    for col in cols:
         if col in df.columns:
-            df[col].fillna(df[col].mean(), inplace=True)
+            df[col] = df[col].fillna(df[col].mean())
 
-    df.dropna(subset=['AQI'], inplace=True)
+    df = df.dropna(subset=['AQI'])
+    df = df.dropna(subset=cols)
 
-    features = ['PM2.5', 'PM10', 'NO', 'NO2', 'NOx', 'NH3', 'CO', 'SO2', 'O3']
-    X = df[features]
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+
+    X = df[cols]
     y = df['AQI']
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model = GradientBoostingRegressor(
+        n_estimators=200,
+        learning_rate=0.1,
+        max_depth=5,
+        random_state=42
+    )
+
     model.fit(X_train, y_train)
+    score = r2_score(y_test, model.predict(X_test))
 
-    return model
+    return model, df, score
 
-# ─── AQI Category Helper ──────────────────────────────────────────────
+# ─── AQI Category ─────────────────────────────────────────────────────
 def get_aqi_category(aqi):
     if aqi <= 50:
-        return "Good 🟢", "green"
+        return "Good 🟢"
     elif aqi <= 100:
-        return "Satisfactory 🟡", "yellow"
+        return "Satisfactory 🟡"
     elif aqi <= 200:
-        return "Moderate 🟠", "orange"
+        return "Moderate 🟠"
     elif aqi <= 300:
-        return "Poor 🔴", "red"
+        return "Poor 🔴"
     elif aqi <= 400:
-        return "Very Poor 🟣", "purple"
+        return "Very Poor 🟣"
     else:
-        return "Severe ⚫", "black"
+        return "Severe ⚫"
 
-# ─── UI ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="AQI Predictor", page_icon="🌫️", layout="centered")
+# ─── Load Data ────────────────────────────────────────────────────────
+model, df, model_score = load_data_and_train()
 
-st.title("🌫️ Air Quality Index (AQI) Predictor")
-st.markdown("Enter pollutant levels below to predict the AQI for a location.")
+# ─── Header ───────────────────────────────────────────────────────────
+st.title("🌫️ AQI Predictor Pro")
+st.markdown("Predict Air Quality Index using ML")
 st.divider()
 
-model = train_model()
+# ─── Tabs ─────────────────────────────────────────────────────────────
+tab1, tab2, tab3 = st.tabs(["Predict AQI", "City Analysis", "Forecast"])
 
-# Input sliders
-col1, col2, col3 = st.columns(3)
+# ════════════════════════════════════════════
+# TAB 1
+# ════════════════════════════════════════════
+with tab1:
+    st.subheader("Enter Pollution Values")
 
-with col1:
-    pm25  = st.number_input("PM2.5 (µg/m³)",  min_value=0.0, max_value=500.0, value=60.0)
-    no    = st.number_input("NO (µg/m³)",      min_value=0.0, max_value=200.0, value=10.0)
-    nh3   = st.number_input("NH3 (µg/m³)",     min_value=0.0, max_value=200.0, value=15.0)
+    pm25 = st.number_input("PM2.5", 0.0, 500.0, 60.0)
+    pm10 = st.number_input("PM10", 0.0, 500.0, 100.0)
+    no = st.number_input("NO", 0.0, 200.0, 10.0)
+    no2 = st.number_input("NO2", 0.0, 200.0, 20.0)
+    nox = st.number_input("NOx", 0.0, 300.0, 25.0)
+    nh3 = st.number_input("NH3", 0.0, 200.0, 15.0)
+    co = st.number_input("CO", 0.0, 50.0, 1.0)
+    so2 = st.number_input("SO2", 0.0, 200.0, 15.0)
+    o3 = st.number_input("O3", 0.0, 300.0, 40.0)
 
-with col2:
-    pm10  = st.number_input("PM10 (µg/m³)",    min_value=0.0, max_value=500.0, value=100.0)
-    no2   = st.number_input("NO2 (µg/m³)",     min_value=0.0, max_value=200.0, value=20.0)
-    co    = st.number_input("CO (mg/m³)",       min_value=0.0, max_value=50.0,  value=1.0)
+    if st.button("Predict AQI"):
+        inp = np.array([[pm25, pm10, no, no2, nox, nh3, co, so2, o3]])
+        pred = model.predict(inp)[0]
 
-with col3:
-    nox   = st.number_input("NOx (µg/m³)",     min_value=0.0, max_value=300.0, value=25.0)
-    so2   = st.number_input("SO2 (µg/m³)",     min_value=0.0, max_value=200.0, value=15.0)
-    o3    = st.number_input("O3 (µg/m³)",      min_value=0.0, max_value=300.0, value=40.0)
+        st.metric("AQI", f"{pred:.1f}")
+        st.success(get_aqi_category(pred))
 
-st.divider()
+# ════════════════════════════════════════════
+# TAB 2
+# ════════════════════════════════════════════
+with tab2:
+    st.subheader("City AQI Analysis")
 
-# Predict button
-if st.button("🔍 Predict AQI", use_container_width=True):
-    input_data = np.array([[pm25, pm10, no, no2, nox, nh3, co, so2, o3]])
-    prediction = model.predict(input_data)[0]
-    category, color = get_aqi_category(prediction)
+    cities = sorted(df['City'].dropna().unique())
+    city = st.selectbox("Select City", cities)
 
-    st.markdown(f"### Predicted AQI: `{prediction:.1f}`")
-    st.markdown(f"### Category: **:{color}[{category}]**")
+    city_df = df[df['City'] == city].dropna().sort_values('Date')
 
-    # Health advice
-    st.divider()
-    st.markdown("#### 💡 Health Advice")
-    if prediction <= 50:
-        st.success("Air quality is great! Perfect for outdoor activities.")
-    elif prediction <= 100:
-        st.info("Air quality is acceptable. Sensitive individuals should take care.")
-    elif prediction <= 200:
-        st.warning("Moderate pollution. Reduce prolonged outdoor activity.")
-    elif prediction <= 300:
-        st.error("Poor air quality. Avoid outdoor activities if possible.")
+    fig, ax = plt.subplots()
+    ax.plot(city_df['Date'], city_df['AQI'])
+    ax.set_title(city)
+    st.pyplot(fig)
+
+# ════════════════════════════════════════════
+# TAB 3 (FIXED)
+# ════════════════════════════════════════════
+with tab3:
+    st.subheader("7-Day Forecast")
+
+    city_f = st.selectbox("Select City", sorted(df['City'].dropna().unique()), key="f")
+
+    features = ['PM2.5','PM10','NO','NO2','NOx','NH3','CO','SO2','O3']
+
+    city_data = df[df['City'] == city_f].dropna().sort_values('Date')
+
+    if city_data.empty:
+        st.warning("No data available for this city.")
     else:
-        st.error("🚨 Severe pollution! Stay indoors and use air purifiers.")
+        last_row = city_data[features].iloc[-1].values
+
+        forecast = []
+        for i in range(7):
+            noise = np.random.uniform(-0.05, 0.05, len(last_row))
+            sim = last_row * (1 + noise)
+            pred = model.predict([sim])[0]
+            forecast.append(round(pred, 1))
+
+        st.line_chart(forecast)
